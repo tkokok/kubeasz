@@ -23,7 +23,7 @@ kuberntes 系统使用 etcd 存储所有数据，是最重要的组件之一，�
   "CN": "etcd",
   "hosts": [
     "127.0.0.1",
-    "{{ NODE_IP }}"
+    "{{ inventory_hostname }}"
   ],
   "key": {
     "algo": "rsa",
@@ -75,10 +75,10 @@ ExecStart={{ bin_dir }}/etcd \
   --peer-key-file=/etc/etcd/ssl/etcd-key.pem \
   --trusted-ca-file={{ ca_dir }}/ca.pem \
   --peer-trusted-ca-file={{ ca_dir }}/ca.pem \
-  --initial-advertise-peer-urls=https://{{ NODE_IP }}:2380 \
-  --listen-peer-urls=https://{{ NODE_IP }}:2380 \
-  --listen-client-urls=https://{{ NODE_IP }}:2379,http://127.0.0.1:2379 \
-  --advertise-client-urls=https://{{ NODE_IP }}:2379 \
+  --initial-advertise-peer-urls=https://{{ inventory_hostname }}:2380 \
+  --listen-peer-urls=https://{{ inventory_hostname }}:2380 \
+  --listen-client-urls=https://{{ inventory_hostname }}:2379,http://127.0.0.1:2379 \
+  --advertise-client-urls=https://{{ inventory_hostname }}:2379 \
   --initial-cluster-token=etcd-cluster-0 \
   --initial-cluster={{ ETCD_NODES }} \
   --initial-cluster-state=new \
@@ -111,7 +111,7 @@ systemctl daemon-reload && systemctl enable etcd && systemctl start etcd
 # 根据hosts中配置设置shell变量 $NODE_IPS
 export NODE_IPS="192.168.1.1 192.168.1.2 192.168.1.3"
 $ for ip in ${NODE_IPS}; do
-  ETCDCTL_API=3 /root/local/bin/etcdctl \
+  ETCDCTL_API=3 etcdctl \
   --endpoints=https://${ip}:2379  \
   --cacert=/etc/kubernetes/ssl/ca.pem \
   --cert=/etc/etcd/ssl/etcd.pem \
@@ -128,4 +128,4 @@ https://192.168.1.3:2379 is healthy: successfully committed proposal: took = 3.2
 三台 etcd 的输出均为 healthy 时表示集群服务正常。
 
 
-[前一篇](01-创建CA证书和环境配置.md) -- [后一篇](04-安装docker服务.md)
+[前一篇](01-创建CA证书和环境配置.md) -- [后一篇](03-安装docker服务.md)

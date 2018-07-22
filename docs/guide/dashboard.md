@@ -52,13 +52,42 @@ kubectl logs kubernetes-dashboard-7c74685c48-9qdpn -n kube-system
 + 第二步通过dashboard自带的登陆流程，使用`Kubeconfig` `Token`等方式登陆
 
 #### 1. 临时访问：使用 `https://NodeIP:NodePort` 方式直接访问 dashboard，生产环境建议关闭该途径
-打开页面出现dashboard 新版本自带的登陆页面，我们选择“令牌(Token)”方式登陆，关于令牌的获取[参考](https://github.com/kubernetes/dashboard/wiki/Creating-sample-user)
+打开页面出现dashboard 新版本自带的登陆页面。Kubernetes仪表盘支持两种登录方式：Kubeconfig、令牌
+
+- 令牌登录
+选择“令牌(Token)”方式登陆，关于令牌的获取[参考](https://github.com/kubernetes/dashboard/wiki/Creating-sample-user)
 
 ``` bash
 # 创建Service Account 和 ClusterRoleBinding
 $ kubectl create -f /etc/ansible/manifests/dashboard/admin-user-sa-rbac.yaml
 # 获取 Bearer Token，找到输出中 ‘token:’ 开头那一行
 $ kubectl -n kube-system describe secret $(kubectl -n kube-system get secret | grep admin-user | awk '{print $1}')
+```
+
+- Kubeconfig登录
+Kubeconfig文件默认位置：`/root/.kube/config`，该文件中默认没有token字段，使用Kubeconfig方式登录，还需要将token追加到该文件中，完整的文件格式如下：
+```
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: LS0tLS1CRUdxxxxxxxxxxxxxx
+    server: https://192.168.1.2:6443
+  name: kubernetes
+contexts:
+- context:
+    cluster: kubernetes
+    user: admin
+  name: kubernetes
+current-context: kubernetes
+kind: Config
+preferences: {}
+users:
+- name: admin
+  user:
+    client-certificate-data: LS0tLS1CRUdJTiBDRxxxxxxxxxxx
+    client-key-data: LS0tLS1CRUdJTxxxxxxxxxxxxxx
+    token: eyJhbGcixxxxxxxxxxxxxxxx
+
 ```
 
 #### 2. 用户+密码访问：安全性比证书方式差点，务必保管好密码文件`basic-auth.csv`
@@ -129,15 +158,67 @@ subjects:
   kind: User
   name: readonly
 ```
-- 2.3 访问 `https://x.x.x.x:6443/api/v1/namespaces/kube-system/services/kubernetes-dashboard/proxy` 使用 admin登陆拥有所有权限，比如删除某个部署；使用 readonly登陆只有查看权限，尝试删除某个部署会提示错误 `forbidden: User \"readonly\" cannot delete services/proxy in the namespace \"kube-system\"`
+- 2.3 访问 `https://x.x.x.x:8443/api/v1/namespaces/kube-system/services/https:kubernetes-dashboard:/proxy` (该URL具体使用`kubectl cluster-info`查看) 使用 admin登陆拥有所有权限，比如删除某个部署；使用 readonly登陆只有查看权限，尝试删除某个部署会提示错误 `forbidden: User \"readonly\" cannot delete services/proxy in the namespace \"kube-system\"`
 
 - dashboard自带的登陆流程同上
 
 #### 3. 证书访问：最安全的方式，配置较复杂
 - 使用集群CA 生成客户端证书，可以根据需要生成权限不同的证书，这里为了演示直接使用 kubectl使用的证书和key(在03.kubectl.yml阶段生成)，该证书拥有所有权限
 - 指定格式导出该证书，进入`/etc/kubernetes/ssl`目录，使用命令`openssl pkcs12 -export -in admin.pem -inkey admin-key.pem -out kube-admin.p12` 提示输入证书密码和确认密码，可以用密码再增加一层保护，也可以直接回车跳过，完成后目录下多了 `kube-admin.p12`文件，将它分发给授权的用户
-- 用户将 `kube-admin.p12` 双击导入证书即可，`IE` 和`Chrome` 中输入`https://x.x.x.x:6443/api/v1/namespaces/kube-system/services/kubernetes-dashboard/proxy` 或者 `https://x.x.x.x:6443/ui` 即可访问。补充：最新firefox需要在浏览器中单独导入 [选项] - [隐私与安全] - [证书/查看证书] - [您的证书] 页面点击 [导入] 该证书
+- 用户将 `kube-admin.p12` 双击导入证书即可，`IE` 和`Chrome` 中输入`https://x.x.x.x:8443/api/v1/namespaces/kube-system/services/https:kubernetes-dashboard:/proxy`(该URL具体使用`kubectl cluster-info`查看) 即可访问。补充：最新firefox需要在浏览器中单独导入 [选项] - [隐私与安全] - [证书/查看证书] - [您的证书] 页面点击 [导入] 该证书
 - dashboard自带的登陆流程同上
+
+#### 4. 授予admin权限，跳过登录
+**注意：** 首先需要确保你知道这样做的后果，授予admin权限后安全性较低，不建议在生产环境中使用。
+
+- 创建admin角色
+```
+$ kubectl create -f /etc/ansible/manifests/dashboard/admin-user-sa-rbac.yaml
+```
+
+- 修改dashboard角色配置
+编辑`/etc/ansible/manifests/dashboard/kubernetes-dashboard.yaml`文件
+
+找到以下配置：
+```
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kubernetes-dashboard-minimal
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kubernetes-dashboard-minimal
+subjects:
+- kind: ServiceAccount
+  name: kubernetes-dashboard
+  namespace: kube-system
+```
+
+修改为：
+```
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kubernetes-dashboard-admin
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- kind: ServiceAccount
+  name: kubernetes-dashboard
+  namespace: kube-system
+```
+
+- 最后再创建dashboard
+`# kubectl create -f /etc/ansible/manifests/dashboard/kubernetes-dashboard.yaml`
+
+访问dashboard：
+`https://x.x.x.x:8443/api/v1/namespaces/kube-system/services/https:kubernetes-dashboard:/proxy`(该URL具体使用`kubectl cluster-info`查看) ，直接点击跳过按钮即可
+
 
 ### 小结
 
@@ -145,4 +226,3 @@ subjects:
 + 由于还未部署 Heapster 插件，当前 dashboard 不能展示 Pod、Nodes 的 CPU、内存等 metric 图形，后续部署 heapster后自然能够看到
 + 本文中的权限设置仅供演示用，生产环境请在此基础上修改成适合你安全需求的方式
 
-[前一篇](kubedns.md) -- [目录](index.md) -- [后一篇](heapster.md)

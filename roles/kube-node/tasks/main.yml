@@ -14,6 +14,7 @@
   - bridge
   - host-local
   - loopback
+  tags: upgrade_k8s
 
 ##----------kubelet 配置部分--------------
 # kubelet 启动时向 kube-apiserver 发送 TLS bootstrapping 请求，需要绑定该角色
@@ -37,27 +38,59 @@
 
 - name: 创建kubelet的systemd unit文件
   template: src=kubelet.service.j2 dest=/etc/systemd/system/kubelet.service
-  tags: kubelet
+  tags: upgrade_k8s, restart_node 
+
+- name: 开机启用kubelet 服务
+  shell: systemctl enable kubelet
+  ignore_errors: true
 
 - name: 开启kubelet 服务
-  shell: systemctl daemon-reload && systemctl enable kubelet && systemctl restart kubelet
-  tags: kubelet 
+  shell: systemctl daemon-reload && systemctl restart kubelet
+  tags: upgrade_k8s, restart_node
 
 ##-------kube-proxy部分----------------
 - name: 安装kube-proxy.kubeconfig配置文件
   copy: src=/etc/kubernetes/kube-proxy.kubeconfig dest=/etc/kubernetes/kube-proxy.kubeconfig
 
 - name: 创建kube-proxy 服务文件
-  tags: reload-kube-proxy
+  tags: reload-kube-proxy, upgrade_k8s, restart_node
   template: src=kube-proxy.service.j2 dest=/etc/systemd/system/kube-proxy.service
 
-- name: 开启kube-proxy 服务
-  tags: reload-kube-proxy
-  shell: systemctl daemon-reload && systemctl enable kube-proxy && systemctl restart kube-proxy
+- name: 开机启用kube-proxy 服务
+  shell: systemctl enable kube-proxy
+  ignore_errors: true
 
-# 批准 node 节点
-- name: approve-kubelet-csr
-  shell: "sleep 10 && {{ bin_dir }}/kubectl get csr|grep 'Pending' | awk 'NR>0{print $1}'| \
-	xargs {{ bin_dir }}/kubectl certificate approve"
+- name: 开启kube-proxy 服务
+  shell: systemctl daemon-reload && systemctl restart kube-proxy
+  tags: reload-kube-proxy, upgrade_k8s, restart_node
+
+# 批准 node 节点，首先轮询等待kubelet启动完成
+- name: 轮询等待kubelet启动
+  shell: "systemctl status kubelet.service|grep Active"
+  register: kubelet_status
+  until: '"running" in kubelet_status.stdout'
+  retries: 8
+  delay: 2
+
+- name: 获取csr 请求信息
+  shell: "sleep 3 && {{ bin_dir }}/kubectl get csr"
+  register: csr_info
   run_once: true
+
+- name: approve-kubelet-csr
+  shell: "{{ bin_dir }}/kubectl get csr|grep 'Pending' | awk 'NR>0{print $1}'| \
+        xargs {{ bin_dir }}/kubectl certificate approve"
+  when: '"Pending" in csr_info.stdout'
+  run_once: true
+
+- name: 轮询等待node达到Ready状态
+  shell: "{{ bin_dir }}/kubectl get node {{ inventory_hostname }}|awk 'NR>1{print $2}'"
+  register: node_status
+  until: node_status.stdout == "Ready" or node_status.stdout == "Ready,SchedulingDisabled"
+  retries: 8 
+  delay: 8
+  tags: upgrade_k8s, restart_node
+
+- name: 设置node节点role
+  shell: "{{ bin_dir }}/kubectl label node {{ inventory_hostname }} kubernetes.io/role=node --overwrite"
   ignore_errors: true

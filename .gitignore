@@ -1,7 +1,10 @@
 down/*
 !down/download.sh
+!down/offline_images
 bin/*
-!bin/VERSION.md
+!bin/readme.md
+manifests/kubedns/kubedns.yaml
+manifests/coredns/coredns.yaml
 hosts
 *.crt
 *.pem
