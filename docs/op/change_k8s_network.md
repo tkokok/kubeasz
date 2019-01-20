@@ -4,10 +4,11 @@
 - WARNNING：重新安装k8s网络插件会短暂中断已有运行在k8s上的服务
   - 请在熟悉kubeasz的安装流程和k8s网络插件安装流程的基础上谨慎操作
   - 如果k8s集群已经运行庞大业务pod，重装网络插件时会引起所有pod的删除、重建，短时间内将给apiserver带来压力，可能引起master节点夯住
+  - 确保没有裸pod 运行(因为最后需要删除所有pod 重建，裸pod 不会重建)，即所有pod 都是由 deploy/daemonset/statefulset 等创建；
 
 ## 替换流程
 
-kubeasz使用标准cni方式安装k8s集群的网络插件；cni负载创建容器网卡和IP分配（IPAM），不同的网络插件（calico,flannel等）创建容器网卡和IP分配方式不一样，所以在替换网络插件时候需要现有pod全部删除，然后自动按照新网络插件的方式重建pod网络；请参考[k8s网络插件章节](../06-安装网络组件.md)。
+kubeasz使用标准cni方式安装k8s集群的网络插件；cni负载创建容器网卡和IP分配（IPAM），不同的网络插件（calico,flannel等）创建容器网卡和IP分配方式不一样，所以在替换网络插件时候需要现有pod全部删除，然后自动按照新网络插件的方式重建pod网络；请参考[k8s网络插件章节](../setup/06-install_network_plugin.md)。
 
 ### 替换操作
 
@@ -26,5 +27,5 @@ g.删除所有运行pod，然后等待自动重建
 
 ## 验证新网络插件
 
-参照[calico](../06.calico.md) [flannel](../06.flannel.md) [kube-router](../06.kube-router.md)
+参照[calico](../setup/network-plugin/calico.md) [cilium](../setup/network-plugin/cilium.md) [flannel](../setup/network-plugin/flannel.md) [kube-router](../setup/network-plugin/kube-router.md)
 

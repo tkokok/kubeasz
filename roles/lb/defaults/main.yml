@@ -1,7 +1,5 @@
 # 区分多个instance的VRRP组播，同网段不能重复，取值在0-255之间
-# 可以直接指定数字，如ROUTER_ID: 111 
-# 取100~200间的随机数
-#ROUTER_ID: "{{ 200 | random }}"
+# 因项目已设置vrrp报文单播模式，所以这个ROUTER_ID 即便同网段里面有重复也没关系
 ROUTER_ID: 111
 
 # haproxy负载均衡算法，常见如下：
@@ -10,3 +8,8 @@ ROUTER_ID: 111
 # "source": 基于请求源IP地址
 # "uri": 基于请求的URI
 BALANCE_ALG: "roundrobin"
+
+# 启用 ingress NodePort服务的负载均衡 (yes/no)
+INGRESS_NODEPORT_LB: "no"
+# 启用 ingress tls NodePort服务的负载均衡 (yes/no)
+INGRESS_TLS_NODEPORT_LB: "no"
